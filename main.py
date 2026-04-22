@@ -164,6 +164,8 @@ def scrape_framar():
             
             print(f"\n--- Област: {region_url} ---")
             page = 1
+            previous_first_doc = None  # Спасението ти от безкрайния цикъл, гащник!
+            
             while True:
                 if is_time_up(): break
                 
@@ -171,13 +173,17 @@ def scrape_framar():
                 current_url = f"{region_url.split('?')[0]}{p_segment}?vars=1000,1,0,0"
                 driver.get(current_url)
                 
-                if page > 1 and ("стр-1" in driver.current_url or driver.current_url.split('?')[0] == region_url.split('?')[0]):
-                    break
-
                 doc_links = driver.find_elements(By.CSS_SELECTOR, "article.item h2.header a")
                 doctor_urls = [el.get_attribute("href") for el in doc_links]
                 
                 if not doctor_urls: break
+
+                # ТУК Е МАГИЯТА: Проверяваме дали сървърчовците не ни въртят същата плоча
+                if previous_first_doc == doctor_urls[0]:
+                    print(f"Мамка му човече, ударихме на камък! Сайтът върти същите докторчовци. Бягаме!")
+                    break
+                
+                previous_first_doc = doctor_urls[0]
 
                 print(f"Страница {page}: {len(doctor_urls)} потенциални жертви.")
                 
