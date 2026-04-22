@@ -1,0 +1,33 @@
+name: Run Framar Scraper
+
+on:
+  schedule:
+    - cron: '0 */6 * * *' # Пуска се на всеки 6 часа
+  workflow_dispatch:      # Позволява ти да го пуснеш ръчно като истински палавник
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run scraper
+        run: python doctor_scraper.py
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add processed_urls.txt framar_doctors_full.csv
+          git commit -m "Update scraped data [skip ci]" || echo "No changes to commit"
+          git push
