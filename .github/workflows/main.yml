@@ -22,15 +22,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run scraper
-        # Мамка му човече, тук смених името на main.py!
         run: python main.py
 
       - name: Commit and push changes
+        # ТОВА Е МАГИЯТА, ГАЩНИК! Дори скриптът да крашне, пак ще сейфа труповете!
+        if: always() 
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           
-          # Добавяме файловете само ако съществуват, за да не гърми, ако си аджамия
+          # Добавяме файлчовците само ако съществуват
           git add processed_urls.txt framar_doctors_full.csv || true
           
           # Къмитваме, ако има промени. Иначе малини, къпини, все тая.
