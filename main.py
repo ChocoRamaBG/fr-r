@@ -170,7 +170,7 @@ def scrape_framar():
                 if is_time_up(): break
                 
                 p_segment = f"/стр-{page}" if page > 1 else ""
-                current_url = f"{region_url.split('?')[0]}{p_segment}?vars=1000,1,0,0"
+                current_url = f"{region_url.split('?')[0]}{p_segment}?vars=10000,1,0,0"
                 driver.get(current_url)
                 
                 doc_links = driver.find_elements(By.CSS_SELECTOR, "article.item h2.header a")
