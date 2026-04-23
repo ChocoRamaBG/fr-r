@@ -2,6 +2,7 @@ import os
 import time
 import re
 import csv
+from urllib.parse import unquote  # <-- ЕТО Я МАГИЯТА, ЛЬОЛЬО!
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -43,7 +44,7 @@ def save_processed_url(url):
         f.write(url + '\n')
 
 def save_to_csv(data):
-    """Мятаме мръвката директно в кюпа."""
+    """Мятаме мръвката директно в кюпа. utf-8-sig спасява кирилицата в Excel!"""
     file_exists = os.path.isfile(csv_file_path)
     with open(csv_file_path, mode='a', encoding='utf-8-sig', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=["Name", "Specialty", "Region", "Address", "Phone", "Email", "Dates", "Rating", "Path", "Source_URL"])
@@ -99,15 +100,18 @@ def decline_cookies(driver):
         print(f"Нещо стана на паприкаш с бутона: {e}")
 
 def extract_doctor_details(driver, url):
-    """Бъркаме в профилчето със скоростта на светлината. Без слипове, без бисквитки!"""
+    """Бъркаме в профилчето със скоростта на светлината."""
     try:
         driver.get(url)
-        # Махаме decline_cookies() и time.sleep() от тук. Pure speed!
+        
+        # Тук използваме unquote(), за да може URL-ът да е на нормална кирилица,
+        # а не на някакви извънземни йероглифи в CSV-то!
+        decoded_url = unquote(url)
         
         details = {
             "Name": "N/A", "Specialty": "N/A", "Region": "N/A", 
             "Address": "N/A", "Phone": "N/A", "Email": "N/A", 
-            "Dates": "N/A", "Rating": "N/A", "Path": "N/A", "Source_URL": url
+            "Dates": "N/A", "Rating": "N/A", "Path": "N/A", "Source_URL": decoded_url
         }
         
         details["Name"] = driver.find_element(By.TAG_NAME, "h1").text
@@ -140,7 +144,7 @@ def extract_doctor_details(driver, url):
             
         return details
     except Exception as e:
-        print(f"Мамка му човече, грешка при {url}: {e}")
+        print(f"Мамка му човече, грешка при {unquote(url)}: {e}")
         return None
 
 def scrape_framar():
@@ -162,7 +166,8 @@ def scrape_framar():
         for region_url in region_links:
             if is_time_up(): break # Спираме, ако времето изтече
             
-            print(f"\n--- Област: {region_url} ---")
+            # Декодираме и региона, да го четеш като бял човек в конзолата
+            print(f"\n--- Област: {unquote(region_url)} ---")
             page = 1
             previous_first_doc = None  # Спасението ти от безкрайния цикъл, гащник!
             
@@ -196,7 +201,7 @@ def scrape_framar():
                         save_to_csv(details)
                         save_processed_url(doc_url)
                         processed_urls.add(doc_url)
-                        print(f"  [+] Оскубан: {details['Name']}")
+                        print(f"  [+] Оскубан: {details['Name']} | {unquote(doc_url)}")
                     
                     # Малък таймер, за да не ни баннат, че сме прекалено бързи
                     time.sleep(0.2)
