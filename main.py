@@ -1,8 +1,7 @@
 import os
 import time
-import re
 import csv
-from urllib.parse import unquote  # <-- ЕТО Я МАГИЯТА, ЛЬОЛЬО!
+from urllib.parse import unquote
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -12,7 +11,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from webdriver_manager.chrome import ChromeDriverManager
 
-# Любимата ти логика за папките, че да не търсиш файлчовците като изгубен гащник
+# Динамично установяване на работната директория
 try:
     output_dir = os.path.dirname(os.path.abspath(__file__))
 except NameError:
@@ -21,59 +20,68 @@ except NameError:
 csv_file_path = os.path.join(output_dir, 'framar_doctors_full.csv')
 progress_file_path = os.path.join(output_dir, 'processed_urls.txt')
 
-# Лимит за работа - 5 часа и 30 минути (19800 секунди), льольо! 
-# Иначе GitHub ще те репортне като мазен спамър.
+# Лимит за работа на скрипта (в секунди) за избягване на таймаут грешки при CI/CD платформи
 MAX_RUNTIME_SECONDS = 5.5 * 3600
 START_TIME = time.time()
 
 def is_time_up():
-    """Проверяваме дали не е време да си лягаш, палавник."""
+    """Проверява дали не е превишено максималното разрешено време за работа."""
     elapsed = time.time() - START_TIME
     return elapsed > MAX_RUNTIME_SECONDS
 
 def load_processed_urls():
-    """Зареждаме паметта на бота, да не повтаряме едни и същи докторчовци."""
+    """Зарежда вече обработените URL адреси от файл, за да се избегне дублиране."""
     if os.path.exists(progress_file_path):
         with open(progress_file_path, 'r', encoding='utf-8') as f:
             return set(line.strip() for line in f if line.strip())
     return set()
 
 def save_processed_url(url):
-    """Маркираме жертвите."""
+    """Записва успешно обработения URL адрес в лог файла."""
     with open(progress_file_path, 'a', encoding='utf-8') as f:
         f.write(url + '\n')
 
 def save_to_csv(data):
-    """Мятаме мръвката директно в кюпа. utf-8-sig спасява кирилицата в Excel!"""
+    """
+    Записва извлечените данни в CSV файл. 
+    Използва се utf-8-sig за правилна визуализация на кирилица в MS Excel.
+    """
     file_exists = os.path.isfile(csv_file_path)
+    
+    # Дефиниране на разширените колони
+    fieldnames = [
+        "Name", "Specialty", "Region", "Address", "Phone", "Email", "Website",
+        "Dates", "Rating", "Education", "Experience", "Qualifications", 
+        "Memberships", "Additional_Info", "Path", "Source_URL"
+    ]
+    
     with open(csv_file_path, mode='a', encoding='utf-8-sig', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=["Name", "Specialty", "Region", "Address", "Phone", "Email", "Dates", "Rating", "Path", "Source_URL"])
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
             writer.writeheader()
         writer.writerow(data)
 
 def setup_driver():
-    """Пускаме машината на стероиди, съобразена с GitHub Actions! Pure brainrot speed!"""
+    """Конфигурира и стартира браузъра с оптимизации за скорост и съвместимост с Headless среди."""
     chrome_options = Options()
     
-    # ТОВА Е МАГИЯТА ЗА СКОРОСТТА: Eager load + спиране на визуални боклукчовци
+    # Eager load стратегия и блокиране на ресурсоемки елементи (изображения, CSS, шрифтове)
     chrome_options.page_load_strategy = 'eager'
     prefs = {
-        "profile.managed_default_content_settings.images": 2, # Без картинки
-        "profile.managed_default_content_settings.stylesheet": 2, # Без CSS
-        "profile.managed_default_content_settings.fonts": 2 # Без шрифтове
+        "profile.managed_default_content_settings.images": 2,
+        "profile.managed_default_content_settings.stylesheet": 2,
+        "profile.managed_default_content_settings.fonts": 2
     }
     chrome_options.add_experimental_option("prefs", prefs)
 
-    # Мамка му човече, ако сме в GitHub (в облака), пускаме невидимия режим
+    # Проверка за изпълнение в GitHub Actions (или друга CI среда)
     if os.getenv('GITHUB_ACTIONS'):
-        print("[!] Скибиди облачен режим активиран (Headless & Fast)")
+        print("[Инфо] Активиран е Headless режим за облачна среда.")
         chrome_options.add_argument("--headless=new") 
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
     else:
-        # Иначе си гледаш как мърда на екрана
-        print("[!] Локален турбо режим: Гледай как хвърчи!")
+        print("[Инфо] Активиран е локален режим (браузърът ще бъде видим).")
         chrome_options.add_argument("--start-maximized")
         
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -86,93 +94,163 @@ def setup_driver():
     return driver
 
 def decline_cookies(driver):
-    """Натискаме 'Отхвърляне' САМО ВЕДНЪЖ, за да не става паприкаш."""
+    """Натиска бутона за отхвърляне на бисквитки, ако такъв е наличен."""
     try:
         reject_btn = WebDriverWait(driver, 5).until(
             EC.element_to_be_clickable((By.CSS_SELECTOR, "button.cky-btn-reject"))
         )
         reject_btn.click()
-        print("[!] Бисквитчовците са в коша!")
+        print("[Инфо] Банерът за бисквитки е отхвърлен успешно.")
         time.sleep(0.5)
     except TimeoutException:
         pass
     except Exception as e:
-        print(f"Нещо стана на паприкаш с бутона: {e}")
+        print(f"[Внимание] Проблем при отхвърлянето на бисквитките: {e}")
 
 def extract_doctor_details(driver, url):
-    """Бъркаме в профилчето със скоростта на светлината."""
+    """Извлича и структурира детайлната информация от профила на специалиста."""
     try:
         driver.get(url)
-        
-        # Тук използваме unquote(), за да може URL-ът да е на нормална кирилица,
-        # а не на някакви извънземни йероглифи в CSV-то!
         decoded_url = unquote(url)
         
         details = {
             "Name": "N/A", "Specialty": "N/A", "Region": "N/A", 
-            "Address": "N/A", "Phone": "N/A", "Email": "N/A", 
-            "Dates": "N/A", "Rating": "N/A", "Path": "N/A", "Source_URL": decoded_url
+            "Address": "N/A", "Phone": "N/A", "Email": "N/A", "Website": "N/A",
+            "Dates": "N/A", "Rating": "N/A", "Education": "N/A", "Experience": "N/A",
+            "Qualifications": "N/A", "Memberships": "N/A", "Additional_Info": "N/A",
+            "Path": "N/A", "Source_URL": decoded_url
         }
         
-        details["Name"] = driver.find_element(By.TAG_NAME, "h1").text
+        try:
+            details["Name"] = driver.find_element(By.TAG_NAME, "h1").text
+        except Exception:
+            pass
         
         try:
-            rating_element = driver.find_element(By.CSS_SELECTOR, "span.fl")
+            rating_element = driver.find_element(By.CSS_SELECTOR, "div#rate span.fl")
             if "оценки" in rating_element.text or "/" in rating_element.text:
                 details["Rating"] = rating_element.text.strip()
-        except: pass
+        except Exception:
+            pass
 
         try:
             time_tag = driver.find_element(By.CSS_SELECTOR, "time.subheader.last")
-            details["Dates"] = time_tag.text
-        except: pass
+            details["Dates"] = time_tag.text.strip()
+        except Exception:
+            pass
 
         try:
             crumbs = driver.find_elements(By.CSS_SELECTOR, "#breadcrumbs .section")
             path_text = " > ".join([c.text for c in crumbs if c.text.lower() != "назад"])
-            details["Path"] = path_text
-        except: pass
+            details["Path"] = path_text.strip()
+        except Exception:
+            pass
 
-        info_elements = driver.find_elements(By.CSS_SELECTOR, "#info p")
-        for p in info_elements:
-            t = p.text
-            if "Специалист:" in t: details["Specialty"] = t.replace("Специалист:", "").strip()
-            elif "Населено място:" in t: details["Region"] = t.replace("Населено място:", "").strip()
-            elif "Адрес:" in t: details["Address"] = t.replace("Адрес:", "").strip()
-            elif "Телефон:" in t: details["Phone"] = t.replace("Телефон:", "").strip()
-            elif "E-mail:" in t: details["Email"] = t.replace("E-mail:", "").strip()
+        # Итериране през всички дъщерни елементи на информационния блок, за да се уловят 
+        # допълнителните секции (Образование, Професионален опит и др.)
+        try:
+            info_container = driver.find_element(By.ID, "info")
+            children = info_container.find_elements(By.XPATH, "./*")
+            
+            current_section = None
+            section_texts = {
+                "Education": [],
+                "Experience": [],
+                "Qualifications": [],
+                "Memberships": [],
+                "Additional": []
+            }
+
+            for child in children:
+                tag = child.tag_name.lower()
+                text = child.text.strip()
+                
+                if not text:
+                    continue
+
+                if tag == "p":
+                    if text.startswith("Специалист:"):
+                        details["Specialty"] = text.replace("Специалист:", "").strip()
+                    elif text.startswith("Населено място:"):
+                        details["Region"] = text.replace("Населено място:", "").strip()
+                    elif text.startswith("Адрес:"):
+                        details["Address"] = text.replace("Адрес:", "").strip()
+                    elif text.startswith("Телефон:"):
+                        details["Phone"] = text.replace("Телефон:", "").strip()
+                    elif text.startswith("E-mail:"):
+                        details["Email"] = text.replace("E-mail:", "").strip()
+                    elif text.startswith("Сайт:"):
+                        details["Website"] = text.replace("Сайт:", "").strip()
+                    elif text.startswith("Още информация:"):
+                        # Подсказка, че следва свободен текст
+                        current_section = "Additional"
+                    else:
+                        # Ако сме в активна секция, добавяме текста на параграфа към нея
+                        if current_section:
+                            section_texts[current_section].append(text)
+
+                elif tag == "h2":
+                    t_lower = text.lower()
+                    if "образование" in t_lower:
+                        current_section = "Education"
+                    elif "професионален" in t_lower or "опит" in t_lower or "път" in t_lower:
+                        current_section = "Experience"
+                    elif "квалификаци" in t_lower or "курс" in t_lower:
+                        current_section = "Qualifications"
+                    elif "членств" in t_lower:
+                        current_section = "Memberships"
+                    else:
+                        # Непознати заглавия се класифицират като допълнителна информация
+                        current_section = "Additional"
+                        section_texts[current_section].append(text)
+
+                elif tag in ["ul", "ol", "div"]:
+                    if current_section:
+                        section_texts[current_section].append(text)
+
+            # Обединяване на събраните масиви от текст в краен стринг
+            details["Education"] = "\n".join(section_texts["Education"]).strip() or "N/A"
+            details["Experience"] = "\n".join(section_texts["Experience"]).strip() or "N/A"
+            details["Qualifications"] = "\n".join(section_texts["Qualifications"]).strip() or "N/A"
+            details["Memberships"] = "\n".join(section_texts["Memberships"]).strip() or "N/A"
+            details["Additional_Info"] = "\n".join(section_texts["Additional"]).strip() or "N/A"
+
+        except Exception as e:
+            print(f"[Внимание] Грешка при парсване на допълнителните данни за {decoded_url}: {e}")
             
         return details
+        
     except Exception as e:
-        print(f"Мамка му човече, грешка при {unquote(url)}: {e}")
+        print(f"[Грешка] Неуспешно извличане на детайли за {unquote(url)}: {e}")
         return None
 
 def scrape_framar():
+    """Основна функция за итериране през регионите и страниците на справочника."""
     processed_urls = load_processed_urls()
     driver = setup_driver()
     
     try:
-        print("Започваме голямото скубане в облака, боклуче...")
+        print("[Инфо] Стартиране на процеса по извличане на данни...")
         driver.get("https://spravochnik.framar.bg/%D0%BC%D0%B5%D0%B4%D0%B8%D1%86%D0%B8%D0%BD%D1%81%D0%BA%D0%B8-%D1%81%D0%BF%D0%B5%D1%86%D0%B8%D0%B0%D0%BB%D0%B8%D1%81%D1%82%D0%B8")
         
-        # Разкарваме ги веднъж и завинаги!
         decline_cookies(driver)
         
         region_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '-%D0%BE%D0%B1%D0%BB%D0%B0%D1%81%D1%82')]")
         region_links = sorted(list(set([el.get_attribute("href") for el in region_elements])))
         
-        print(f"Намерих {len(region_links)} региончовци.")
+        print(f"[Инфо] Намерени са {len(region_links)} региона за обхождане.")
 
         for region_url in region_links:
-            if is_time_up(): break # Спираме, ако времето изтече
+            if is_time_up(): 
+                break 
             
-            # Декодираме и региона, да го четеш като бял човек в конзолата
-            print(f"\n--- Област: {unquote(region_url)} ---")
+            print(f"\n--- Обработка на регион: {unquote(region_url)} ---")
             page = 1
-            previous_first_doc = None  # Спасението ти от безкрайния цикъл, гащник!
+            previous_first_doc = None
             
             while True:
-                if is_time_up(): break
+                if is_time_up(): 
+                    break
                 
                 p_segment = f"/стр-{page}" if page > 1 else ""
                 current_url = f"{region_url.split('?')[0]}{p_segment}?vars=10000,1,0,0"
@@ -181,40 +259,42 @@ def scrape_framar():
                 doc_links = driver.find_elements(By.CSS_SELECTOR, "article.item h2.header a")
                 doctor_urls = [el.get_attribute("href") for el in doc_links]
                 
-                if not doctor_urls: break
+                if not doctor_urls: 
+                    break
 
-                # ТУК Е МАГИЯТА: Проверяваме дали сървърчовците не ни въртят същата плоча
+                # Проверка за повтарящо се съдържание (предотвратяване на безкраен цикъл)
                 if previous_first_doc == doctor_urls[0]:
-                    print(f"Мамка му човече, ударихме на камък! Сайтът върти същите докторчовци. Бягаме!")
+                    print("[Внимание] Засечено е повторение на резултатите. Преминаване към следващия регион.")
                     break
                 
                 previous_first_doc = doctor_urls[0]
 
-                print(f"Страница {page}: {len(doctor_urls)} потенциални жертви.")
+                print(f"Страница {page}: Открити {len(doctor_urls)} профила.")
                 
                 for doc_url in doctor_urls:
-                    if is_time_up(): break
-                    if doc_url in processed_urls: continue
+                    if is_time_up(): 
+                        break
+                    if doc_url in processed_urls: 
+                        continue
                     
                     details = extract_doctor_details(driver, doc_url)
                     if details:
                         save_to_csv(details)
                         save_processed_url(doc_url)
                         processed_urls.add(doc_url)
-                        print(f"  [+] Оскубан: {details['Name']} | {unquote(doc_url)}")
+                        print(f"  [+] Успешно записан: {details['Name']} | {unquote(doc_url)}")
                     
-                    # Малък таймер, за да не ни баннат, че сме прекалено бързи
                     time.sleep(0.2)
                 
                 page += 1
             
             if is_time_up():
-                print("--- ВРЕМЕТО ИЗТЕЧЕ! Спираме за днес, гащник. ---")
+                print("--- [Инфо] Максималното време за изпълнение изтече. Процесът се спира. ---")
                 break
 
     finally:
         driver.quit()
-        print(f"\n--- ГОТОВО, БОКЛУЧЕ! ---")
+        print("\n--- [Инфо] Процесът приключи. ---")
 
 if __name__ == "__main__":
     scrape_framar()
