@@ -2,8 +2,8 @@ name: Run Framar Scraper
 
 on:
   schedule:
-    - cron: '0 */6 * * *' # Пуска се на всеки 6 часа
-  workflow_dispatch:      # Бутонче за ръчно пускане от льольовци
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -25,19 +25,19 @@ jobs:
         run: python main.py
 
       - name: Commit and push changes
-        # ТОВА Е МАГИЯТА, ГАЩНИК! Дори скриптът да крашне, пак ще сейфа труповете!
         if: always() 
         run: |
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           
-          # Добавяме файлчовците само ако съществуват
+          # Добавяне на файловете
           git add processed_urls.txt framar_doctors_full.csv || true
           
-          # Къмитваме, ако има промени. Иначе малини, къпини, все тая.
-          git commit -m "Автоматичен ъпдейт на докторчовци [skip ci]" || echo "Няма нови жертви за днес"
+          # Създаване на commit
+          git commit -m "Автоматичен ъпдейт на данни [skip ci]" || echo "Няма нови промени за запазване"
           
-          # ЕТО ГО СПАСЕНИЕТО ТИ, АДЖАМИЯ! Дърпаме новите комитчовци, преди да пушнем.
-          git pull --rebase origin main
+          # Изтегляне на последните промени със стратегия 'union' за избягване на конфликти
+          git pull origin main --no-rebase --strategy-option=union
           
+          # Изтласкване на промените
           git push
