@@ -30,14 +30,18 @@ jobs:
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           
-          # Добавяне на файловете
-          git add processed_urls.txt framar_doctors_full.csv || true
+          # Instruct Git to use the 'union' merge driver for these specific files
+          echo "framar_doctors_full.csv merge=union" > .gitattributes
+          echo "processed_urls.txt merge=union" >> .gitattributes
           
-          # Създаване на commit
+          # Add the tracking files and the new .gitattributes file
+          git add processed_urls.txt framar_doctors_full.csv .gitattributes || true
+          
+          # Create the commit
           git commit -m "Автоматичен ъпдейт на данни [skip ci]" || echo "Няма нови промени за запазване"
           
-          # Изтегляне на последните промени със стратегия 'union' за избягване на конфликти
-          git pull origin main --no-rebase --strategy-option=union
+          # Pull the latest changes (the .gitattributes file will automatically resolve append conflicts)
+          git pull origin main --no-rebase
           
-          # Изтласкване на промените
+          # Push the merged data to the repository
           git push
