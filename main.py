@@ -146,8 +146,6 @@ def extract_doctor_details(driver, url):
         except Exception:
             pass
 
-        # Итериране през всички дъщерни елементи на информационния блок, за да се уловят 
-        # допълнителните секции (Образование, Професионален опит и др.)
         try:
             info_container = driver.find_element(By.ID, "info")
             children = info_container.find_elements(By.XPATH, "./*")
@@ -168,6 +166,27 @@ def extract_doctor_details(driver, url):
                 if not text:
                     continue
 
+                t_lower = text.lower()
+                
+                # Идентифициране на заглавия: <h2>, <h3> или къси <p> тагове със <strong>/<b>
+                is_header = False
+                if tag in ["h2", "h3"] or (tag == "p" and len(text) < 60 and (text.endswith(":") or child.find_elements(By.XPATH, ".//strong | .//b"))):
+                    if "образование" in t_lower:
+                        current_section = "Education"
+                        is_header = True
+                    elif "професионален" in t_lower or "опит" in t_lower or "път" in t_lower:
+                        current_section = "Experience"
+                        is_header = True
+                    elif "квалификаци" in t_lower or "курс" in t_lower:
+                        current_section = "Qualifications"
+                        is_header = True
+                    elif "членств" in t_lower:
+                        current_section = "Memberships"
+                        is_header = True
+
+                if is_header:
+                    continue
+
                 if tag == "p":
                     if text.startswith("Специалист:"):
                         details["Specialty"] = text.replace("Специалист:", "").strip()
@@ -182,33 +201,24 @@ def extract_doctor_details(driver, url):
                     elif text.startswith("Сайт:"):
                         details["Website"] = text.replace("Сайт:", "").strip()
                     elif text.startswith("Още информация:"):
-                        # Подсказка, че следва свободен текст
                         current_section = "Additional"
+                        rem_text = text.replace("Още информация:", "").strip()
+                        if rem_text:
+                            section_texts[current_section].append(rem_text)
                     else:
-                        # Ако сме в активна секция, добавяме текста на параграфа към нея
                         if current_section:
                             section_texts[current_section].append(text)
-
-                elif tag == "h2":
-                    t_lower = text.lower()
-                    if "образование" in t_lower:
-                        current_section = "Education"
-                    elif "професионален" in t_lower or "опит" in t_lower or "път" in t_lower:
-                        current_section = "Experience"
-                    elif "квалификаци" in t_lower or "курс" in t_lower:
-                        current_section = "Qualifications"
-                    elif "членств" in t_lower:
-                        current_section = "Memberships"
-                    else:
-                        # Непознати заглавия се класифицират като допълнителна информация
-                        current_section = "Additional"
-                        section_texts[current_section].append(text)
+                        else:
+                            current_section = "Additional"
+                            section_texts[current_section].append(text)
 
                 elif tag in ["ul", "ol", "div"]:
                     if current_section:
                         section_texts[current_section].append(text)
+                    else:
+                        current_section = "Additional"
+                        section_texts[current_section].append(text)
 
-            # Обединяване на събраните масиви от текст в краен стринг
             details["Education"] = "\n".join(section_texts["Education"]).strip() or "N/A"
             details["Experience"] = "\n".join(section_texts["Experience"]).strip() or "N/A"
             details["Qualifications"] = "\n".join(section_texts["Qualifications"]).strip() or "N/A"
